@@ -103,6 +103,8 @@ fields such as `title`, `width`, labels, and form items.
 title = "Deploy"
 show_header_title = false
 width = 520
+control_width = "full"
+control_height = 48
 submit_label = "Deploy"
 cancel_label = "Cancel"
 
@@ -231,9 +233,13 @@ border = "#333333"
 `--config` and `--style` have separate responsibilities:
 
 - `--config`: current form or task config, such as `title`, `width`, `items`,
-  and `control_width`.
+  `control_width`, and `control_height`.
 - `--style`: UI style config, such as `theme`, `padding`, `font_size`, and
-  `control_height`.
+  default `control_height`.
+
+For forms, top-level `control_height` in `--config` tunes that form's visible
+input, search, select, and button height. When it is omitted, Rune uses the
+default from `--style` or the global style config.
 
 CLI flags such as `--theme` and `--always-on-top` override style config for the
 current command.

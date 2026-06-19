@@ -32,6 +32,7 @@ pub struct CallConfig {
     pub always_on_top: bool,
     pub theme: Option<Theme>,
     pub control_width: ControlWidth,
+    pub control_height: Option<f32>,
     pub submit_label: String,
     pub cancel_label: String,
     pub items: Vec<FormItem>,
@@ -49,6 +50,7 @@ impl Default for CallConfig {
             always_on_top: false,
             theme: None,
             control_width: ControlWidth::Full,
+            control_height: None,
             submit_label: "OK".to_string(),
             cancel_label: "Cancel".to_string(),
             items: Vec::new(),
@@ -233,6 +235,12 @@ fn resolved_control_width(control_width: ControlWidth, available_width: f32) -> 
     }
 }
 
+fn effective_control_height(config: &CallConfig, style: &StyleConfig) -> f32 {
+    config
+        .control_height
+        .unwrap_or(style.window.body.control_height)
+}
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum TextStyle {
@@ -290,6 +298,7 @@ pub fn run_form(config: CallConfig, mut style: StyleConfig) -> Result<FormOutcom
         theme: config.theme,
         always_on_top: config.always_on_top,
     });
+    style.window.body.control_height = effective_control_height(&config, &style);
 
     let result = Arc::new(Mutex::new(None));
     let app_result = Arc::clone(&result);
@@ -447,6 +456,12 @@ fn split_options(raw: &str) -> Vec<String> {
 }
 
 pub fn validate_config(config: &CallConfig) -> Result<()> {
+    if let Some(control_height) = config.control_height
+        && (!control_height.is_finite() || control_height <= 0.0)
+    {
+        bail!("control_height must be greater than 0");
+    }
+
     let mut ids = BTreeSet::new();
     for item in &config.items {
         match item {
@@ -1004,6 +1019,7 @@ mod tests {
         assert_eq!(config.title, "Deploy");
         assert!(config.show_header_title);
         assert_eq!(config.control_width, ControlWidth::Full);
+        assert_eq!(config.control_height, None);
         assert_eq!(config.items.len(), 1);
     }
 
@@ -1210,6 +1226,40 @@ mod tests {
     }
 
     #[test]
+    fn parses_top_level_control_height() {
+        let config: CallConfig = crate::config::parse_config_text(
+            r#"
+            control_height = 48
+            "#,
+            ConfigFormat::Toml,
+        )
+        .unwrap();
+
+        assert_eq!(config.control_height, Some(48.0));
+    }
+
+    #[test]
+    fn missing_control_height_defaults_to_none() {
+        let config: CallConfig = crate::config::parse_config_text("", ConfigFormat::Toml).unwrap();
+
+        assert_eq!(config.control_height, None);
+    }
+
+    #[test]
+    fn rejects_non_positive_control_height() {
+        let config: CallConfig = crate::config::parse_config_text(
+            r#"
+            control_height = 0
+            "#,
+            ConfigFormat::Toml,
+        )
+        .unwrap();
+        let error = validate_config(&config).unwrap_err();
+
+        assert!(format!("{error:#}").contains("control_height must be greater than 0"));
+    }
+
+    #[test]
     fn parses_item_control_width_override() {
         let config: CallConfig = crate::config::parse_config_text(
             r#"
@@ -1264,6 +1314,27 @@ mod tests {
             resolved_control_width(ControlWidth::Percent(0.75), 420.0),
             315.0
         );
+    }
+
+    #[test]
+    fn effective_control_height_uses_form_config() {
+        let mut style = StyleConfig::default();
+        style.window.body.control_height = 36.0;
+        let config = CallConfig {
+            control_height: Some(48.0),
+            ..Default::default()
+        };
+
+        assert_eq!(effective_control_height(&config, &style), 48.0);
+    }
+
+    #[test]
+    fn effective_control_height_falls_back_to_style_config() {
+        let mut style = StyleConfig::default();
+        style.window.body.control_height = 42.0;
+        let config = CallConfig::default();
+
+        assert_eq!(effective_control_height(&config, &style), 42.0);
     }
 
     #[test]

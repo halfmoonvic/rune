@@ -112,6 +112,7 @@ fn shortcut_base_config(
         always_on_top: args.common.always_on_top,
         theme: args.common.theme,
         control_width: Default::default(),
+        control_height: None,
         submit_label: submit_label.to_string(),
         cancel_label: cancel_label.to_string(),
         show_cancel,

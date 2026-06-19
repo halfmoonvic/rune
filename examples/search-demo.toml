@@ -1,6 +1,7 @@
 title = "Search"
 show_header_title = false
 width = 560
+control_height = 48
 
 [[items]]
 type = "search"
