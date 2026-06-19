@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod exit;
+mod form;
 
 use std::process::ExitCode;
 
@@ -8,6 +9,7 @@ use anyhow::Result;
 use clap::Parser;
 use cli::{Cli, Command, ConfigCommand};
 use config::{StyleOverrides, global_config_path, init_global_config, load_global_style};
+use form::{FormOutcome, form_exit_code, resolve_form, run_form};
 
 fn main() -> ExitCode {
     match run() {
@@ -23,15 +25,21 @@ fn run() -> Result<i32> {
     let cli = Cli::parse();
     match cli.command {
         Command::Config(args) => handle_config(args.command),
-        Command::Form(_)
-        | Command::Stream(_)
-        | Command::Confirm(_)
-        | Command::Alert(_)
-        | Command::Input(_) => {
+        Command::Form(args) => handle_form(args),
+        Command::Stream(_) | Command::Confirm(_) | Command::Alert(_) | Command::Input(_) => {
             eprintln!("error: command is not implemented yet");
             Ok(exit::CONFIG_ERROR)
         }
     }
+}
+
+fn handle_form(args: cli::FormArgs) -> Result<i32> {
+    let config = resolve_form(args)?;
+    let outcome = run_form(config, load_global_style())?;
+    if let FormOutcome::Submitted(output) = &outcome {
+        println!("{output}");
+    }
+    Ok(form_exit_code(&outcome))
 }
 
 fn handle_config(command: ConfigCommand) -> Result<i32> {
