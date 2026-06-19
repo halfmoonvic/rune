@@ -85,10 +85,10 @@ CLI flag                                    （一次性微调，永远生效）
 
 ### 3.2 全局样式配置（隐式加载）
 
-路径遵循 XDG 规范（用 `directories` crate 处理跨平台差异）：
+路径由 Rune 显式解析：
 
 - Linux: `~/.config/rune/config.toml`
-- macOS: `~/Library/Application Support/rune/config.toml`
+- macOS: `~/.config/rune/config.toml`
 - Windows: `%APPDATA%\rune\config.toml`
 
 ```toml
@@ -443,7 +443,7 @@ Rune 自己 `spawn` 子进程，捕获 stdout/stderr 管道进窗口，因此可
 |---|---|
 | CLI 解析 | `clap`（derive 模式，配合子命令结构） |
 | 配置/数据序列化 | `serde` + `toml` + `serde_json`（同一份数据模型同时支持两种格式） |
-| 跨平台配置路径 | `directories`（XDG / macOS / Windows 路径差异处理） |
+| 跨平台配置路径 | Rune 内部解析（macOS/Linux 使用 XDG 风格路径，Windows 使用 `%APPDATA%`） |
 | markdown 渲染 | `egui_commonmark` |
 | 子进程托管（模式 B） | `std::process::Command` + 管道；后台线程读 stdout/stderr，经 `mpsc::channel` 推给 egui 主循环；`update()` 中 `try_recv` 拉取新行并 `ctx.request_repaint()` |
 | ANSI 解析 | 暂无现成的直接转 egui `RichText` 的库，需自行实现轻量状态机（逻辑量不大） |

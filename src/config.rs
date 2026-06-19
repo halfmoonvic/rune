@@ -1,11 +1,12 @@
 use std::{
+    env,
+    ffi::OsString,
     fs,
     io::{self, Read},
     path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result, bail};
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, clap::ValueEnum)]
@@ -128,11 +129,38 @@ impl StyleConfig {
 }
 
 pub fn global_config_path() -> PathBuf {
-    if let Some(project_dirs) = ProjectDirs::from("", "", "rune") {
-        project_dirs.config_dir().join("config.toml")
-    } else {
-        PathBuf::from("config.toml")
-    }
+    global_config_path_from_env()
+}
+
+#[cfg(windows)]
+fn global_config_path_from_env() -> PathBuf {
+    windows_config_path(env_path("APPDATA"))
+}
+
+#[cfg(not(windows))]
+fn global_config_path_from_env() -> PathBuf {
+    unix_config_path(env_path("XDG_CONFIG_HOME"), env_path("HOME"))
+}
+
+fn env_path(name: &str) -> Option<OsString> {
+    env::var_os(name).filter(|value| !value.is_empty())
+}
+
+#[cfg(windows)]
+fn windows_config_path(appdata: Option<OsString>) -> PathBuf {
+    appdata
+        .map(PathBuf::from)
+        .map(|base| base.join("rune").join("config.toml"))
+        .unwrap_or_else(|| PathBuf::from("config.toml"))
+}
+
+#[cfg(not(windows))]
+fn unix_config_path(xdg_config_home: Option<OsString>, home: Option<OsString>) -> PathBuf {
+    xdg_config_home
+        .map(PathBuf::from)
+        .or_else(|| home.map(|home| PathBuf::from(home).join(".config")))
+        .map(|base| base.join("rune").join("config.toml"))
+        .unwrap_or_else(|| PathBuf::from("config.toml"))
 }
 
 pub fn load_global_style() -> StyleConfig {
@@ -275,5 +303,61 @@ mod tests {
 
         assert_eq!(style.window.theme, Theme::Dark);
         assert!(style.window.always_on_top);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn unix_config_path_prefers_xdg_config_home() {
+        let path = unix_config_path(Some(OsString::from("/tmp/rune-config")), None);
+
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp/rune-config")
+                .join("rune")
+                .join("config.toml")
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn unix_config_path_falls_back_to_home_config() {
+        let path = unix_config_path(None, Some(OsString::from("/tmp/rune-home")));
+
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp/rune-home")
+                .join(".config")
+                .join("rune")
+                .join("config.toml")
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn unix_config_path_falls_back_to_local_config_file() {
+        let path = unix_config_path(None, None);
+
+        assert_eq!(path, PathBuf::from("config.toml"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_config_path_uses_appdata() {
+        let path = windows_config_path(Some(OsString::from(r"C:\Users\me\AppData\Roaming")));
+
+        assert_eq!(
+            path,
+            PathBuf::from(r"C:\Users\me\AppData\Roaming")
+                .join("rune")
+                .join("config.toml")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_config_path_falls_back_to_local_config_file() {
+        let path = windows_config_path(None);
+
+        assert_eq!(path, PathBuf::from("config.toml"));
     }
 }

@@ -24,8 +24,32 @@ fn run_with_home(home: &Path, args: &[&str]) -> Output {
         .args(args)
         .env("HOME", home)
         .env("XDG_CONFIG_HOME", home.join(".config"))
+        .env("APPDATA", home.join("AppData").join("Roaming"))
         .output()
         .expect("failed to run rune")
+}
+
+#[cfg(not(windows))]
+fn run_with_home_without_xdg(home: &Path, args: &[&str]) -> Output {
+    rune()
+        .args(args)
+        .env("HOME", home)
+        .env_remove("XDG_CONFIG_HOME")
+        .output()
+        .expect("failed to run rune")
+}
+
+#[cfg(windows)]
+fn expected_global_config_path(home: &Path) -> PathBuf {
+    home.join("AppData")
+        .join("Roaming")
+        .join("rune")
+        .join("config.toml")
+}
+
+#[cfg(not(windows))]
+fn expected_global_config_path(home: &Path) -> PathBuf {
+    home.join(".config").join("rune").join("config.toml")
 }
 
 #[test]
@@ -75,19 +99,43 @@ fn config_path_prints_rune_config_file() {
     assert!(output.status.success());
     assert!(output.stderr.is_empty());
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    assert!(
-        stdout.trim_end().ends_with("rune/config.toml"),
-        "path was: {stdout}"
+    assert_eq!(
+        stdout.trim_end(),
+        expected_global_config_path(&home).display().to_string()
+    );
+}
+
+#[cfg(not(windows))]
+#[test]
+fn config_path_falls_back_to_home_config_without_xdg_config_home() {
+    let home = temp_home("path-no-xdg");
+    let output = run_with_home_without_xdg(&home, &["config", "path"]);
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert_eq!(
+        stdout.trim_end(),
+        home.join(".config")
+            .join("rune")
+            .join("config.toml")
+            .display()
+            .to_string()
     );
 }
 
 #[test]
 fn config_show_prints_merged_style_config() {
     let home = temp_home("show");
-    let config_dir = home.join(".config").join("rune");
-    fs::create_dir_all(&config_dir).expect("failed to create config dir");
+    let config_path = expected_global_config_path(&home);
+    fs::create_dir_all(
+        config_path
+            .parent()
+            .expect("config path should have parent"),
+    )
+    .expect("failed to create config dir");
     fs::write(
-        config_dir.join("config.toml"),
+        config_path,
         r#"
         [window]
         theme = "light"
