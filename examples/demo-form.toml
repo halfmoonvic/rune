@@ -1,0 +1,47 @@
+title = "Rune 示例表单"
+width = 520
+submit_label = "确认"
+cancel_label = "取消"
+
+[[items]]
+type = "markdown"
+content = "## 操作确认\n请先阅读下面的信息，然后填写必要内容。"
+
+[[items]]
+type = "text"
+content = "这是一段普通文字 item，用来展示提示信息。"
+style = "info"
+
+[[items]]
+type = "text"
+content = "注意：点击确认后，脚本会收到一行 JSON 结果。"
+style = "warning"
+
+[[items]]
+type = "input"
+id = "name"
+label = "名称"
+default = "demo"
+placeholder = "请输入名称"
+required = true
+
+[[items]]
+type = "textarea"
+id = "notes"
+label = "备注"
+rows = 4
+default = "这里可以填写多行内容。"
+
+[[items]]
+type = "select"
+id = "environment"
+label = "环境"
+options = ["dev", "staging", "prod"]
+default = "staging"
+
+[[items]]
+type = "checkbox"
+id = "confirmed"
+label = "我已经确认以上内容"
+default = false
+required = true
