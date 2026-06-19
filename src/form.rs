@@ -29,7 +29,7 @@ pub struct CallConfig {
     pub submit_label: String,
     pub cancel_label: String,
     pub items: Vec<FormItem>,
-    #[serde(skip)]
+    #[serde(skip, default = "default_show_cancel")]
     pub show_cancel: bool,
 }
 
@@ -110,6 +110,10 @@ pub enum TextStyle {
 
 fn default_rows() -> usize {
     4
+}
+
+fn default_show_cancel() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -665,6 +669,7 @@ mod tests {
             config.items.first(),
             Some(FormItem::Checkbox { required: true, .. })
         ));
+        assert!(config.show_cancel);
     }
 
     #[test]
