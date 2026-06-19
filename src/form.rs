@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     fs,
+    io::{self, Write},
     path::{Path, PathBuf},
     sync::Arc as StdArc,
     sync::{Arc, Mutex},
@@ -74,6 +75,20 @@ pub enum FormItem {
         default: String,
         #[serde(default)]
         placeholder: String,
+        #[serde(default)]
+        required: bool,
+        #[serde(default)]
+        control_width: Option<ControlWidth>,
+    },
+    Search {
+        id: String,
+        label: String,
+        #[serde(default)]
+        default: String,
+        #[serde(default)]
+        placeholder: String,
+        #[serde(default = "default_search_button_label")]
+        button_label: String,
         #[serde(default)]
         required: bool,
         #[serde(default)]
@@ -229,6 +244,10 @@ pub enum TextStyle {
 
 fn default_rows() -> usize {
     4
+}
+
+fn default_search_button_label() -> String {
+    "Search".to_string()
 }
 
 fn default_show_cancel() -> bool {
@@ -433,6 +452,7 @@ pub fn validate_config(config: &CallConfig) -> Result<()> {
         match item {
             FormItem::Text { .. } | FormItem::Markdown { .. } => {}
             FormItem::Input { id, .. }
+            | FormItem::Search { id, .. }
             | FormItem::Textarea { id, .. }
             | FormItem::Select { id, .. }
             | FormItem::Checkbox { id, .. } => {
@@ -479,7 +499,9 @@ impl FormApp {
         let mut values = BTreeMap::new();
         for item in &config.items {
             match item {
-                FormItem::Input { id, default, .. } | FormItem::Textarea { id, default, .. } => {
+                FormItem::Input { id, default, .. }
+                | FormItem::Search { id, default, .. }
+                | FormItem::Textarea { id, default, .. } => {
                     values.insert(id.clone(), FieldValue::Text(default.clone()));
                 }
                 FormItem::Select {
@@ -532,6 +554,9 @@ impl FormApp {
                 FormItem::Input {
                     id, required: true, ..
                 }
+                | FormItem::Search {
+                    id, required: true, ..
+                }
                 | FormItem::Textarea {
                     id, required: true, ..
                 } => {
@@ -565,6 +590,35 @@ impl FormApp {
         }
         Value::Object(output).to_string()
     }
+
+    fn search(&mut self, id: &str, required: bool) {
+        let value = match self.values.get(id) {
+            Some(FieldValue::Text(value)) => value.clone(),
+            _ => String::new(),
+        };
+
+        if required && value.trim().is_empty() {
+            self.errors.insert(id.to_string(), "Required".to_string());
+            return;
+        }
+
+        self.errors.remove(id);
+        if let Err(err) = emit_search_event(id, &value) {
+            eprintln!("warning: failed to write search event: {err}");
+        }
+    }
+}
+
+pub fn search_event_json(id: &str, value: &str) -> String {
+    let mut output = serde_json::Map::new();
+    output.insert(id.to_string(), Value::String(value.to_string()));
+    Value::Object(output).to_string()
+}
+
+fn emit_search_event(id: &str, value: &str) -> io::Result<()> {
+    let mut stdout = io::stdout().lock();
+    writeln!(stdout, "{}", search_event_json(id, value))?;
+    stdout.flush()
 }
 
 impl eframe::App for FormApp {
@@ -652,6 +706,48 @@ impl FormApp {
                 }
                 self.render_error(ui, id);
             }
+            FormItem::Search {
+                id,
+                label,
+                placeholder,
+                button_label,
+                required,
+                control_width,
+                ..
+            } => {
+                ui.label(label);
+                let row_width = resolved_control_width(
+                    control_width.unwrap_or(self.config.control_width),
+                    ui.available_width(),
+                );
+                let mut clicked = false;
+                ui.allocate_ui_with_layout(
+                    egui::vec2(row_width, ui.spacing().interact_size.y),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        ui.spacing_mut().item_spacing.x = 6.0;
+                        let button_width = button_label_width(ui, button_label);
+                        let input_width =
+                            (row_width - button_width - ui.spacing().item_spacing.x).max(40.0);
+                        if let Some(FieldValue::Text(value)) = self.values.get_mut(id) {
+                            let edit = egui::TextEdit::singleline(value)
+                                .hint_text(placeholder)
+                                .desired_width(input_width);
+                            ui.add_sized([input_width, ui.spacing().interact_size.y], edit);
+                        }
+                        clicked = ui
+                            .add_sized(
+                                [button_width, ui.spacing().interact_size.y],
+                                egui::Button::new(button_label),
+                            )
+                            .clicked();
+                    },
+                );
+                if clicked {
+                    self.search(id, *required);
+                }
+                self.render_error(ui, id);
+            }
             FormItem::Textarea {
                 id,
                 label,
@@ -711,6 +807,16 @@ impl FormApp {
             ui.label(egui::RichText::new(error).color(egui::Color32::from_rgb(190, 50, 50)));
         }
     }
+}
+
+fn button_label_width(ui: &egui::Ui, label: &str) -> f32 {
+    let font_id = egui::TextStyle::Button.resolve(ui.style());
+    let text_width = ui
+        .painter()
+        .layout_no_wrap(label.to_string(), font_id, ui.visuals().text_color())
+        .rect
+        .width();
+    (text_width + ui.spacing().button_padding.x * 2.0).max(72.0)
 }
 
 pub(crate) fn apply_egui_style(ctx: &egui::Context, style: &StyleConfig) {
@@ -909,6 +1015,80 @@ mod tests {
             Some(FormItem::Checkbox { required: true, .. })
         ));
         assert!(config.show_cancel);
+    }
+
+    #[test]
+    fn parses_search_item_with_defaults() {
+        let config: CallConfig = crate::config::parse_config_text(
+            r#"
+            [[items]]
+            type = "search"
+            id = "query"
+            label = "Query"
+            "#,
+            ConfigFormat::Toml,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.items.first(),
+            Some(&FormItem::Search {
+                id: "query".to_string(),
+                label: "Query".to_string(),
+                default: String::new(),
+                placeholder: String::new(),
+                button_label: "Search".to_string(),
+                required: false,
+                control_width: None,
+            })
+        );
+    }
+
+    #[test]
+    fn parses_search_item_button_label() {
+        let config: CallConfig = crate::config::parse_config_text(
+            r#"
+            [[items]]
+            type = "search"
+            id = "query"
+            label = "Query"
+            button_label = "Go"
+            "#,
+            ConfigFormat::Toml,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            config.items.first(),
+            Some(FormItem::Search { button_label, .. }) if button_label == "Go"
+        ));
+    }
+
+    #[test]
+    fn validates_required_empty_search_value() {
+        let config = CallConfig {
+            items: vec![FormItem::Search {
+                id: "query".to_string(),
+                label: "Query".to_string(),
+                default: String::new(),
+                placeholder: String::new(),
+                button_label: "Search".to_string(),
+                required: true,
+                control_width: None,
+            }],
+            ..Default::default()
+        };
+        let app = FormApp::new(config, Arc::new(Mutex::new(None)));
+
+        assert_eq!(
+            app.validate_values().get("query").map(String::as_str),
+            Some("Required")
+        );
+    }
+
+    #[test]
+    fn search_event_json_uses_clicked_item_id() {
+        assert_eq!(search_event_json("query", "value"), r#"{"query":"value"}"#);
     }
 
     #[test]

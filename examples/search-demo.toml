@@ -1,0 +1,36 @@
+title = "Search"
+show_header_title = false
+width = 560
+
+[[items]]
+type = "search"
+id = "query"
+label = "Search"
+placeholder = "Type a keyword"
+button_label = "Search"
+required = true
+
+[[items]]
+type = "markdown"
+content = """
+## Results
+
+Use the search field above to emit a JSON line without closing the window.
+
+### Recent documents
+
+- `release-notes.md`
+- `deploy-checklist.md`
+- `incident-review.md`
+
+### Saved filters
+
+- Open pull requests
+- Failed CI jobs
+- Assigned reviews
+
+### Notes
+
+The lower panel is read-only in this demo. Press `OK` to submit the full form,
+or press `Cancel` to close without submitting.
+"""

@@ -54,6 +54,12 @@ Run a form from a config file:
 rune form --config examples/demo-form.toml
 ```
 
+Run the search demo:
+
+```bash
+rune form --config examples/search-demo.toml
+```
+
 Show a command's output in a stream window:
 
 ```bash
@@ -112,6 +118,14 @@ default = "main"
 required = true
 
 [[items]]
+type = "search"
+id = "query"
+label = "Search"
+placeholder = "Type a keyword"
+button_label = "Search"
+required = true
+
+[[items]]
 type = "select"
 id = "environment"
 label = "Environment"
@@ -145,6 +159,7 @@ Supported form item types:
 - `text`
 - `markdown`
 - `input`
+- `search`
 - `textarea`
 - `select`
 - `checkbox`
