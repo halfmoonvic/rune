@@ -219,6 +219,7 @@ show_icon = true
 padding = 16
 font_size = 14
 line_height = 1.5
+control_height = 36
 
 [window.colors]
 background = "#1e1e1e"
@@ -232,7 +233,7 @@ border = "#333333"
 - `--config`: current form or task config, such as `title`, `width`, `items`,
   and `control_width`.
 - `--style`: UI style config, such as `theme`, `padding`, `font_size`, and
-  `colors`.
+  `control_height`.
 
 CLI flags such as `--theme` and `--always-on-top` override style config for the
 current command.

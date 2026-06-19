@@ -657,10 +657,11 @@ impl eframe::App for FormApp {
 
             ui.separator();
             ui.horizontal(|ui| {
-                if self.config.show_cancel && ui.button(&self.config.cancel_label).clicked() {
+                if self.config.show_cancel && action_button(ui, &self.config.cancel_label).clicked()
+                {
                     self.cancel(&ctx);
                 }
-                if ui.button(&self.config.submit_label).clicked() {
+                if action_button(ui, &self.config.submit_label).clicked() {
                     self.submit(&ctx);
                 }
             });
@@ -702,7 +703,7 @@ impl FormApp {
                     let edit = egui::TextEdit::singleline(value)
                         .hint_text(placeholder)
                         .desired_width(width);
-                    ui.add(edit);
+                    ui.add_sized([width, control_height(ui)], edit);
                 }
                 self.render_error(ui, id);
             }
@@ -720,9 +721,10 @@ impl FormApp {
                     control_width.unwrap_or(self.config.control_width),
                     ui.available_width(),
                 );
+                let row_height = control_height(ui);
                 let mut clicked = false;
                 ui.allocate_ui_with_layout(
-                    egui::vec2(row_width, ui.spacing().interact_size.y),
+                    egui::vec2(row_width, row_height),
                     egui::Layout::left_to_right(egui::Align::Center),
                     |ui| {
                         ui.spacing_mut().item_spacing.x = 6.0;
@@ -733,13 +735,10 @@ impl FormApp {
                             let edit = egui::TextEdit::singleline(value)
                                 .hint_text(placeholder)
                                 .desired_width(input_width);
-                            ui.add_sized([input_width, ui.spacing().interact_size.y], edit);
+                            ui.add_sized([input_width, row_height], edit);
                         }
                         clicked = ui
-                            .add_sized(
-                                [button_width, ui.spacing().interact_size.y],
-                                egui::Button::new(button_label),
-                            )
+                            .add_sized([button_width, row_height], egui::Button::new(button_label))
                             .clicked();
                     },
                 );
@@ -782,14 +781,20 @@ impl FormApp {
                         control_width.unwrap_or(self.config.control_width),
                         ui.available_width(),
                     );
-                    egui::ComboBox::from_id_salt(id)
-                        .width(width)
-                        .selected_text(value.as_str())
-                        .show_ui(ui, |ui| {
-                            for option in options {
-                                ui.selectable_value(value, option.clone(), option);
-                            }
-                        });
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(width, control_height(ui)),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            egui::ComboBox::from_id_salt(id)
+                                .width(width)
+                                .selected_text(value.as_str())
+                                .show_ui(ui, |ui| {
+                                    for option in options {
+                                        ui.selectable_value(value, option.clone(), option);
+                                    }
+                                });
+                        },
+                    );
                 }
                 self.render_error(ui, id);
             }
@@ -807,6 +812,15 @@ impl FormApp {
             ui.label(egui::RichText::new(error).color(egui::Color32::from_rgb(190, 50, 50)));
         }
     }
+}
+
+fn control_height(ui: &egui::Ui) -> f32 {
+    ui.spacing().interact_size.y
+}
+
+fn action_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
+    let width = button_label_width(ui, label);
+    ui.add_sized([width, control_height(ui)], egui::Button::new(label))
 }
 
 fn button_label_width(ui: &egui::Ui, label: &str) -> f32 {
@@ -829,6 +843,7 @@ pub(crate) fn apply_egui_style(ctx: &egui::Context, style: &StyleConfig) {
     let mut egui_style = (*ctx.global_style()).clone();
     egui_style.spacing.item_spacing = egui::vec2(8.0, style.window.body.padding / 2.0);
     egui_style.spacing.window_margin = egui::Margin::same(style.window.body.padding as i8);
+    egui_style.spacing.interact_size.y = style.window.body.control_height.max(1.0);
     egui_style.text_styles.insert(
         egui::TextStyle::Body,
         egui::FontId::proportional(style.window.body.font_size),
@@ -1280,5 +1295,16 @@ mod tests {
 
             assert_eq!(action_bar_reserved_height(ui), default_height + 10.0);
         });
+    }
+
+    #[test]
+    fn egui_style_uses_configured_control_height() {
+        let ctx = egui::Context::default();
+        let mut style = StyleConfig::default();
+        style.window.body.control_height = 42.0;
+
+        apply_egui_style(&ctx, &style);
+
+        assert_eq!(ctx.global_style().spacing.interact_size.y, 42.0);
     }
 }

@@ -84,6 +84,7 @@ pub struct BodyStyle {
     pub padding: f32,
     pub font_size: f32,
     pub line_height: f32,
+    pub control_height: f32,
 }
 
 impl Default for BodyStyle {
@@ -92,6 +93,7 @@ impl Default for BodyStyle {
             padding: 16.0,
             font_size: 14.0,
             line_height: 1.5,
+            control_height: 36.0,
         }
     }
 }
@@ -275,6 +277,7 @@ show_icon = true
 padding = 16.0
 font_size = 14.0
 line_height = 1.5
+control_height = 36.0
 
 # [window.colors]
 # background = "#1e1e1e"
@@ -302,7 +305,22 @@ mod tests {
 
         assert_eq!(style.window.theme, Theme::Dark);
         assert_eq!(style.window.body.padding, 20.0);
+        assert_eq!(style.window.body.control_height, 36.0);
         assert_eq!(style.window.header.height, 40.0);
+    }
+
+    #[test]
+    fn parses_body_control_height() {
+        let style: StyleConfig = parse_config_text(
+            r#"
+            [window.body]
+            control_height = 40
+            "#,
+            ConfigFormat::Toml,
+        )
+        .unwrap();
+
+        assert_eq!(style.window.body.control_height, 40.0);
     }
 
     #[test]
