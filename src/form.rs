@@ -715,10 +715,9 @@ impl FormApp {
                         control_width.unwrap_or(self.config.control_width),
                         ui.available_width(),
                     );
-                    let edit = egui::TextEdit::singleline(value)
-                        .hint_text(placeholder)
-                        .desired_width(width);
-                    ui.add_sized([width, control_height(ui)], edit);
+                    let height = control_height(ui);
+                    let edit = singleline_text_edit(value, placeholder, width, height, ui);
+                    ui.add_sized([width, height], edit);
                 }
                 self.render_error(ui, id);
             }
@@ -747,13 +746,20 @@ impl FormApp {
                         let input_width =
                             (row_width - button_width - ui.spacing().item_spacing.x).max(40.0);
                         if let Some(FieldValue::Text(value)) = self.values.get_mut(id) {
-                            let edit = egui::TextEdit::singleline(value)
-                                .hint_text(placeholder)
-                                .desired_width(input_width);
+                            let edit = singleline_text_edit(
+                                value,
+                                placeholder,
+                                input_width,
+                                row_height,
+                                ui,
+                            );
                             ui.add_sized([input_width, row_height], edit);
                         }
                         clicked = ui
-                            .add_sized([button_width, row_height], egui::Button::new(button_label))
+                            .add_sized(
+                                [button_width, row_height],
+                                control_button(button_label, button_width, row_height),
+                            )
                             .clicked();
                     },
                 );
@@ -833,9 +839,38 @@ fn control_height(ui: &egui::Ui) -> f32 {
     ui.spacing().interact_size.y
 }
 
+fn singleline_text_edit<'a>(
+    value: &'a mut String,
+    placeholder: &str,
+    width: f32,
+    height: f32,
+    ui: &egui::Ui,
+) -> egui::TextEdit<'a> {
+    let margin_y = singleline_text_edit_margin_y(ui, height);
+    egui::TextEdit::singleline(value)
+        .hint_text(placeholder)
+        .desired_width(width)
+        .margin(egui::Margin::symmetric(4, margin_y))
+        .vertical_align(egui::Align::Center)
+}
+
+fn singleline_text_edit_margin_y(ui: &egui::Ui, height: f32) -> i8 {
+    let font_id = egui::TextStyle::Body.resolve(ui.style());
+    let row_height = ui.fonts_mut(|fonts| fonts.row_height(&font_id));
+    ((height - row_height) / 2.0)
+        .max(2.0)
+        .round()
+        .clamp(0.0, i8::MAX as f32) as i8
+}
+
 fn action_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
     let width = button_label_width(ui, label);
-    ui.add_sized([width, control_height(ui)], egui::Button::new(label))
+    let height = control_height(ui);
+    ui.add_sized([width, height], control_button(label, width, height))
+}
+
+fn control_button(label: &str, width: f32, height: f32) -> egui::Button<'_> {
+    egui::Button::new(label).min_size(egui::vec2(width, height))
 }
 
 fn button_label_width(ui: &egui::Ui, label: &str) -> f32 {
@@ -1365,6 +1400,35 @@ mod tests {
             ui.set_style(style);
 
             assert_eq!(action_bar_reserved_height(ui), default_height + 10.0);
+        });
+    }
+
+    #[test]
+    fn singleline_text_edit_uses_control_height() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run_ui(Default::default(), |ui| {
+            let mut style = (**ui.style()).clone();
+            style.spacing.interact_size.y = 64.0;
+            ui.set_style(style);
+
+            let mut value = String::new();
+            let response = ui.add(singleline_text_edit(&mut value, "Search", 240.0, 64.0, ui));
+
+            assert!(response.rect.height() >= 63.0);
+        });
+    }
+
+    #[test]
+    fn action_button_uses_control_height() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run_ui(Default::default(), |ui| {
+            let mut style = (**ui.style()).clone();
+            style.spacing.interact_size.y = 64.0;
+            ui.set_style(style);
+
+            let response = action_button(ui, "OK");
+
+            assert_eq!(response.rect.height(), 64.0);
         });
     }
 
