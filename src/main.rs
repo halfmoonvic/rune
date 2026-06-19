@@ -106,6 +106,7 @@ fn shortcut_base_config(
             .title
             .clone()
             .unwrap_or_else(|| default_title.to_string()),
+        show_header_title: true,
         width: args.common.width,
         timeout: args.common.timeout,
         always_on_top: args.common.always_on_top,

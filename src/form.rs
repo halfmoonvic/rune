@@ -25,6 +25,7 @@ use crate::{
 #[serde(default)]
 pub struct CallConfig {
     pub title: String,
+    pub show_header_title: bool,
     pub width: Option<f32>,
     pub timeout: Option<u64>,
     pub always_on_top: bool,
@@ -41,6 +42,7 @@ impl Default for CallConfig {
     fn default() -> Self {
         Self {
             title: "Rune".to_string(),
+            show_header_title: true,
             width: None,
             timeout: None,
             always_on_top: false,
@@ -579,10 +581,12 @@ impl eframe::App for FormApp {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.take_available_space();
 
-            ui.vertical_centered_justified(|ui| {
-                ui.heading(&self.config.title);
-            });
-            ui.add_space(10.0);
+            if self.config.show_header_title {
+                ui.vertical_centered_justified(|ui| {
+                    ui.heading(&self.config.title);
+                });
+                ui.add_space(10.0);
+            }
 
             let action_bar_height = action_bar_reserved_height(ui);
             let body_height = (ui.available_height() - action_bar_height).max(0.0);
@@ -819,6 +823,11 @@ mod tests {
     use crate::cli::{Cli, Command};
 
     #[test]
+    fn default_call_config_shows_header_title() {
+        assert!(CallConfig::default().show_header_title);
+    }
+
+    #[test]
     fn validates_duplicate_interactive_ids() {
         let config = CallConfig {
             items: vec![
@@ -872,6 +881,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(config.title, "Deploy");
+        assert!(config.show_header_title);
         assert_eq!(config.control_width, ControlWidth::Full);
         assert_eq!(config.items.len(), 1);
     }
@@ -893,11 +903,27 @@ mod tests {
         .unwrap();
 
         assert_eq!(config.title, "Deploy");
+        assert!(config.show_header_title);
         assert!(matches!(
             config.items.first(),
             Some(FormItem::Checkbox { required: true, .. })
         ));
         assert!(config.show_cancel);
+    }
+
+    #[test]
+    fn parses_hidden_header_title() {
+        let config: CallConfig = crate::config::parse_config_text(
+            r#"
+            title = "Deploy"
+            show_header_title = false
+            "#,
+            ConfigFormat::Toml,
+        )
+        .unwrap();
+
+        assert_eq!(config.title, "Deploy");
+        assert!(!config.show_header_title);
     }
 
     #[test]

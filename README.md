@@ -95,6 +95,7 @@ fields such as `title`, `width`, labels, and form items.
 
 ```toml
 title = "Deploy"
+show_header_title = false
 width = 520
 submit_label = "Deploy"
 cancel_label = "Cancel"
@@ -123,6 +124,9 @@ id = "confirmed"
 label = "I have reviewed the deployment"
 required = true
 ```
+
+Set `show_header_title = false` to hide the large heading inside the form
+window while keeping the OS window title bar text.
 
 Run it:
 
@@ -237,4 +241,3 @@ cargo fmt
 cargo test
 git diff --check
 ```
-

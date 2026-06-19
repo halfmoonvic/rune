@@ -1,4 +1,5 @@
 title = "Rune 示例表单"
+show_header_title = false
 width = 520
 control_width = "full"
 submit_label = "确认"
