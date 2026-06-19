@@ -645,6 +645,74 @@ mod tests {
     }
 
     #[test]
+    fn parses_toml_call_config() {
+        let config: CallConfig = crate::config::parse_config_text(
+            r#"
+            title = "Deploy"
+
+            [[items]]
+            type = "checkbox"
+            id = "confirm"
+            label = "Confirm"
+            required = true
+            "#,
+            ConfigFormat::Toml,
+        )
+        .unwrap();
+
+        assert_eq!(config.title, "Deploy");
+        assert!(matches!(
+            config.items.first(),
+            Some(FormItem::Checkbox { required: true, .. })
+        ));
+    }
+
+    #[test]
+    fn cli_flags_override_call_config() {
+        let path = std::env::temp_dir().join(format!(
+            "rune-form-{}.toml",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(
+            &path,
+            r#"
+            title = "From config"
+            width = 320
+
+            [[items]]
+            type = "select"
+            id = "env"
+            label = "Environment"
+            options = ["dev", "prod"]
+            default = "dev"
+            "#,
+        )
+        .unwrap();
+
+        let cli = Cli::parse_from([
+            "rune",
+            "form",
+            "--config",
+            path.to_str().unwrap(),
+            "--title",
+            "From CLI",
+            "--width",
+            "640",
+        ]);
+        let Command::Form(args) = cli.command else {
+            panic!("expected form command");
+        };
+        let config = resolve_form(args).unwrap();
+        std::fs::remove_file(path).unwrap();
+
+        assert_eq!(config.title, "From CLI");
+        assert_eq!(config.width, Some(640.0));
+    }
+
+    #[test]
     fn merges_cli_shorthand_into_items() {
         let cli = Cli::parse_from([
             "rune",
