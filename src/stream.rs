@@ -17,7 +17,7 @@ use crate::{
     cli::{OnFinish, StreamArgs},
     config::{StyleConfig, StyleOverrides},
     exit,
-    form::apply_egui_style,
+    form::{apply_egui_style, install_system_cjk_font, native_options},
 };
 
 #[derive(Clone, Debug)]
@@ -107,16 +107,14 @@ pub fn run_stream(config: StreamConfig, mut style: StyleConfig) -> Result<i32> {
     if style.window.always_on_top {
         viewport = viewport.with_always_on_top();
     }
-    let native_options = eframe::NativeOptions {
-        viewport,
-        ..Default::default()
-    };
+    let native_options = native_options(viewport);
     let title = config.title.clone();
 
     eframe::run_native(
         &title,
         native_options,
         Box::new(move |cc| {
+            install_system_cjk_font(&cc.egui_ctx);
             apply_egui_style(&cc.egui_ctx, &style);
             Ok(Box::new(StreamApp::new(
                 config,
@@ -390,7 +388,7 @@ impl eframe::App for StreamApp {
         });
     }
 
-    fn on_exit(&mut self) {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         if self.status.is_running() && self.stop_tx.is_some() && !self.stopped_by_user {
             self.stop();
         }

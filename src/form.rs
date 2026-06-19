@@ -1,5 +1,8 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc as StdArc,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -163,15 +166,13 @@ pub fn run_form(config: CallConfig, mut style: StyleConfig) -> Result<FormOutcom
         viewport = viewport.with_always_on_top();
     }
 
-    let native_options = eframe::NativeOptions {
-        viewport,
-        ..Default::default()
-    };
+    let native_options = native_options(viewport);
     let title = config.title.clone();
     eframe::run_native(
         &title,
         native_options,
         Box::new(move |cc| {
+            install_system_cjk_font(&cc.egui_ctx);
             apply_egui_style(&cc.egui_ctx, &style);
             Ok(Box::new(FormApp::new(config, app_result)))
         }),
@@ -573,6 +574,76 @@ pub(crate) fn apply_egui_style(ctx: &egui::Context, style: &StyleConfig) {
         egui::FontId::proportional(style.window.header.font_size + 6.0),
     );
     ctx.set_global_style(egui_style);
+}
+
+pub(crate) fn native_options(viewport: egui::ViewportBuilder) -> eframe::NativeOptions {
+    eframe::NativeOptions {
+        viewport,
+        #[cfg(target_os = "macos")]
+        renderer: eframe::Renderer::Glow,
+        ..Default::default()
+    }
+}
+
+pub(crate) fn install_system_cjk_font(ctx: &egui::Context) {
+    let Some((name, bytes)) = load_system_cjk_font() else {
+        return;
+    };
+
+    let mut fonts = egui::FontDefinitions::default();
+    fonts
+        .font_data
+        .insert(name.clone(), StdArc::new(egui::FontData::from_owned(bytes)));
+
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        if let Some(fonts_for_family) = fonts.families.get_mut(&family) {
+            fonts_for_family.push(name.clone());
+        }
+    }
+
+    ctx.set_fonts(fonts);
+}
+
+fn load_system_cjk_font() -> Option<(String, Vec<u8>)> {
+    system_cjk_font_paths().into_iter().find_map(|path| {
+        fs::read(&path)
+            .ok()
+            .map(|bytes| (path.to_string_lossy().into_owned(), bytes))
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn system_cjk_font_paths() -> Vec<PathBuf> {
+    vec![
+        Path::new("/System/Library/Fonts/STHeiti Medium.ttc").to_path_buf(),
+        Path::new("/System/Library/Fonts/Hiragino Sans GB.ttc").to_path_buf(),
+        Path::new("/Library/Fonts/Arial Unicode.ttf").to_path_buf(),
+        Path::new("/System/Library/Fonts/Supplemental/Arial Unicode.ttf").to_path_buf(),
+    ]
+}
+
+#[cfg(target_os = "windows")]
+fn system_cjk_font_paths() -> Vec<PathBuf> {
+    let windir = std::env::var_os("WINDIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    let fonts = windir.join("Fonts");
+    vec![
+        fonts.join("msyh.ttc"),
+        fonts.join("simhei.ttf"),
+        fonts.join("simsun.ttc"),
+    ]
+}
+
+#[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+fn system_cjk_font_paths() -> Vec<PathBuf> {
+    vec![
+        Path::new("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc").to_path_buf(),
+        Path::new("/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf").to_path_buf(),
+        Path::new("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc").to_path_buf(),
+        Path::new("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc").to_path_buf(),
+        Path::new("/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf").to_path_buf(),
+    ]
 }
 
 pub fn form_exit_code(outcome: &FormOutcome) -> i32 {
