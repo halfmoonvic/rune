@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod exit;
 mod form;
+mod stream;
 
 use std::process::ExitCode;
 
@@ -10,6 +11,7 @@ use clap::Parser;
 use cli::{Cli, Command, ConfigCommand, ShortcutArgs};
 use config::{StyleOverrides, global_config_path, init_global_config, load_global_style};
 use form::{CallConfig, FormItem, FormOutcome, form_exit_code, resolve_form, run_form};
+use stream::{StreamConfig, run_stream};
 
 fn main() -> ExitCode {
     match run() {
@@ -29,11 +31,12 @@ fn run() -> Result<i32> {
         Command::Confirm(args) => handle_confirm(args),
         Command::Alert(args) => handle_alert(args),
         Command::Input(args) => handle_input(args),
-        Command::Stream(_) => {
-            eprintln!("error: command is not implemented yet");
-            Ok(exit::CONFIG_ERROR)
-        }
+        Command::Stream(args) => handle_stream(args),
     }
+}
+
+fn handle_stream(args: cli::StreamArgs) -> Result<i32> {
+    run_stream(StreamConfig::from(args), load_global_style())
 }
 
 fn handle_confirm(args: ShortcutArgs) -> Result<i32> {

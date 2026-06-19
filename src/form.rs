@@ -550,7 +550,7 @@ impl FormApp {
     }
 }
 
-fn apply_egui_style(ctx: &egui::Context, style: &StyleConfig) {
+pub(crate) fn apply_egui_style(ctx: &egui::Context, style: &StyleConfig) {
     match style.window.theme {
         Theme::Light => ctx.set_visuals(egui::Visuals::light()),
         Theme::Dark | Theme::Custom => ctx.set_visuals(egui::Visuals::dark()),
