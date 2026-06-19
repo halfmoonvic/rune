@@ -29,6 +29,8 @@ pub enum Command {
 pub struct CommonWindowArgs {
     #[arg(long)]
     pub title: Option<String>,
+    #[arg(long, value_name = "FILE")]
+    pub style: Option<PathBuf>,
     #[arg(long)]
     pub width: Option<f32>,
     #[arg(long)]
@@ -188,6 +190,8 @@ mod tests {
             "form",
             "--title",
             "Deploy",
+            "--style",
+            "dark.toml",
             "--input",
             "branch=Branch",
             "--default",
@@ -200,8 +204,47 @@ mod tests {
             panic!("expected form command");
         };
         assert_eq!(args.common.title.as_deref(), Some("Deploy"));
+        assert_eq!(
+            args.common.style.as_deref(),
+            Some(std::path::Path::new("dark.toml"))
+        );
         assert_eq!(args.inputs[0].id, "branch");
         assert_eq!(args.defaults[0].value, "main");
         assert_eq!(args.required[0], "branch");
+    }
+
+    #[test]
+    fn parses_shortcut_style_flag() {
+        let cli = Cli::parse_from(["rune", "input", "Name", "--style", "compact.toml"]);
+
+        let Command::Input(args) = cli.command else {
+            panic!("expected input command");
+        };
+        assert_eq!(
+            args.common.style.as_deref(),
+            Some(std::path::Path::new("compact.toml"))
+        );
+    }
+
+    #[test]
+    fn parses_stream_style_before_subprocess_command() {
+        let cli = Cli::parse_from([
+            "rune",
+            "stream",
+            "--style",
+            "stream-style.toml",
+            "--",
+            "cargo",
+            "test",
+        ]);
+
+        let Command::Stream(args) = cli.command else {
+            panic!("expected stream command");
+        };
+        assert_eq!(
+            args.common.style.as_deref(),
+            Some(std::path::Path::new("stream-style.toml"))
+        );
+        assert_eq!(args.command, ["cargo", "test"]);
     }
 }

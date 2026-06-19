@@ -187,6 +187,19 @@ pub fn load_global_style() -> StyleConfig {
     }
 }
 
+pub fn load_style(path: Option<&Path>) -> Result<StyleConfig> {
+    match path {
+        Some(path) => load_style_file(path),
+        None => Ok(load_global_style()),
+    }
+}
+
+pub fn load_style_file(path: &Path) -> Result<StyleConfig> {
+    let text = fs::read_to_string(path)
+        .with_context(|| format!("failed to read style config file {}", path.display()))?;
+    toml::from_str(&text).context("failed to parse TOML style config")
+}
+
 pub fn parse_config_text<T>(text: &str, format: ConfigFormat) -> Result<T>
 where
     T: for<'de> Deserialize<'de>,
@@ -303,6 +316,67 @@ mod tests {
 
         assert_eq!(style.window.theme, Theme::Dark);
         assert!(style.window.always_on_top);
+    }
+
+    #[test]
+    fn loads_explicit_style_file_as_toml() {
+        let path = std::env::temp_dir().join(format!(
+            "rune-style-{}.toml",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after epoch")
+                .as_nanos()
+        ));
+        fs::write(
+            &path,
+            r#"
+            [window]
+            theme = "dark"
+            always_on_top = true
+            "#,
+        )
+        .expect("failed to write style file");
+
+        let style = load_style(Some(&path)).expect("style should load");
+
+        assert_eq!(style.window.theme, Theme::Dark);
+        assert!(style.window.always_on_top);
+        fs::remove_file(path).expect("failed to remove style file");
+    }
+
+    #[test]
+    fn missing_explicit_style_file_is_an_error() {
+        let path = std::env::temp_dir().join(format!(
+            "rune-missing-style-{}.toml",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after epoch")
+                .as_nanos()
+        ));
+
+        let err = load_style(Some(&path)).expect_err("missing style should fail");
+
+        assert!(err.to_string().contains("failed to read style config file"));
+    }
+
+    #[test]
+    fn invalid_explicit_style_file_is_an_error() {
+        let path = std::env::temp_dir().join(format!(
+            "rune-invalid-style-{}.toml",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after epoch")
+                .as_nanos()
+        ));
+        fs::write(&path, "not = [valid").expect("failed to write style file");
+
+        let err = load_style(Some(&path)).expect_err("invalid style should fail");
+
+        assert!(
+            err.to_string()
+                .contains("failed to parse TOML style config")
+        );
+        fs::remove_file(path).expect("failed to remove style file");
     }
 
     #[cfg(not(windows))]

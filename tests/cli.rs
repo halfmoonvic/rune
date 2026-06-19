@@ -92,6 +92,49 @@ fn invalid_call_config_exits_two_and_keeps_stdout_empty() {
 }
 
 #[test]
+fn missing_explicit_style_exits_two_and_keeps_stdout_empty() {
+    let home = temp_home("missing-style");
+    let output = run_with_home(
+        &home,
+        &["form", "--style", "does-not-exist.toml", "--text", "Hello"],
+    );
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("failed to read style config file"),
+        "stderr was: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn invalid_explicit_style_exits_two_and_keeps_stdout_empty() {
+    let home = temp_home("invalid-style");
+    let style = home.join("bad-style.toml");
+    fs::write(&style, "not = [valid").expect("failed to write invalid style");
+
+    let output = run_with_home(
+        &home,
+        &[
+            "form",
+            "--style",
+            style.to_str().unwrap(),
+            "--text",
+            "Hello",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("failed to parse TOML style config"),
+        "stderr was: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn config_path_prints_rune_config_file() {
     let home = temp_home("path");
     let output = run_with_home(&home, &["config", "path"]);

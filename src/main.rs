@@ -9,7 +9,9 @@ use std::process::ExitCode;
 use anyhow::{Context, Result};
 use clap::Parser;
 use cli::{Cli, Command, ConfigCommand, ShortcutArgs};
-use config::{StyleOverrides, global_config_path, init_global_config, load_global_style};
+use config::{
+    StyleOverrides, global_config_path, init_global_config, load_global_style, load_style,
+};
 use form::{CallConfig, FormItem, FormOutcome, form_exit_code, resolve_form, run_form};
 use stream::{StreamConfig, run_stream};
 
@@ -36,12 +38,14 @@ fn run() -> Result<i32> {
 }
 
 fn handle_stream(args: cli::StreamArgs) -> Result<i32> {
-    run_stream(StreamConfig::from(args), load_global_style())
+    let style = load_style(args.common.style.as_deref())?;
+    run_stream(StreamConfig::from(args), style)
 }
 
 fn handle_confirm(args: ShortcutArgs) -> Result<i32> {
+    let style = load_style(args.common.style.as_deref())?;
     let config = shortcut_base_config(args, "Confirm", "Yes", "No", true);
-    let outcome = run_form(config, load_global_style())?;
+    let outcome = run_form(config, style)?;
     Ok(match outcome {
         FormOutcome::Submitted(_) => exit::SUCCESS,
         FormOutcome::Cancelled => exit::CANCELLED,
@@ -50,8 +54,9 @@ fn handle_confirm(args: ShortcutArgs) -> Result<i32> {
 }
 
 fn handle_alert(args: ShortcutArgs) -> Result<i32> {
+    let style = load_style(args.common.style.as_deref())?;
     let config = shortcut_base_config(args, "Alert", "Close", "", false);
-    let outcome = run_form(config, load_global_style())?;
+    let outcome = run_form(config, style)?;
     Ok(match outcome {
         FormOutcome::Submitted(_) | FormOutcome::Cancelled => exit::SUCCESS,
         FormOutcome::TimedOut => exit::TIMEOUT,
@@ -59,6 +64,7 @@ fn handle_alert(args: ShortcutArgs) -> Result<i32> {
 }
 
 fn handle_input(args: ShortcutArgs) -> Result<i32> {
+    let style = load_style(args.common.style.as_deref())?;
     let text = args.text.clone();
     let default = args.default.clone().unwrap_or_default();
     let mut config = shortcut_base_config(args, "Input", "OK", "Cancel", true);
@@ -72,7 +78,7 @@ fn handle_input(args: ShortcutArgs) -> Result<i32> {
         control_width: None,
     });
 
-    let outcome = run_form(config, load_global_style())?;
+    let outcome = run_form(config, style)?;
     match outcome {
         FormOutcome::Submitted(output) => {
             let value: serde_json::Value =
@@ -121,8 +127,9 @@ fn shortcut_base_config(
 }
 
 fn handle_form(args: cli::FormArgs) -> Result<i32> {
+    let style = load_style(args.common.style.as_deref())?;
     let config = resolve_form(args)?;
-    let outcome = run_form(config, load_global_style())?;
+    let outcome = run_form(config, style)?;
     if let FormOutcome::Submitted(output) = &outcome {
         println!("{output}");
     }
