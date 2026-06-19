@@ -459,14 +459,19 @@ impl eframe::App for FormApp {
             return;
         }
 
-        egui::Frame::central_panel(ui.style()).show(ui, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            ui.take_available_space();
+
             ui.vertical_centered_justified(|ui| {
                 ui.heading(&self.config.title);
             });
             ui.add_space(10.0);
 
+            let action_bar_height = action_bar_reserved_height(ui);
+            let body_height = (ui.available_height() - action_bar_height).max(0.0);
             egui::ScrollArea::vertical()
-                .auto_shrink([false, true])
+                .auto_shrink([false, false])
+                .max_height(body_height)
                 .show(ui, |ui| {
                     let items = self.config.items.clone();
                     for item in items {
@@ -486,6 +491,10 @@ impl eframe::App for FormApp {
             });
         });
     }
+}
+
+fn action_bar_reserved_height(ui: &egui::Ui) -> f32 {
+    ui.spacing().interact_size.y + ui.spacing().item_spacing.y * 2.0 + 1.0
 }
 
 impl FormApp {
@@ -833,5 +842,18 @@ mod tests {
         );
 
         assert_eq!(app.output_json(), r#"{"ok":true}"#);
+    }
+
+    #[test]
+    fn action_bar_reserved_height_grows_with_button_height() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run_ui(Default::default(), |ui| {
+            let default_height = action_bar_reserved_height(ui);
+            let mut style = (**ui.style()).clone();
+            style.spacing.interact_size.y += 10.0;
+            ui.set_style(style);
+
+            assert_eq!(action_bar_reserved_height(ui), default_height + 10.0);
+        });
     }
 }
