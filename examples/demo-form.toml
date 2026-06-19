@@ -1,5 +1,6 @@
 title = "Rune 示例表单"
 width = 520
+control_width = "full"
 submit_label = "确认"
 cancel_label = "取消"
 
@@ -24,6 +25,7 @@ label = "名称"
 default = "demo"
 placeholder = "请输入名称"
 required = true
+control_width = "75%"
 
 [[items]]
 type = "textarea"
@@ -31,6 +33,7 @@ id = "notes"
 label = "备注"
 rows = 4
 default = "这里可以填写多行内容。"
+control_width = 420
 
 [[items]]
 type = "select"
@@ -38,6 +41,7 @@ id = "environment"
 label = "环境"
 options = ["dev", "staging", "prod"]
 default = "staging"
+control_width = "full"
 
 [[items]]
 type = "checkbox"

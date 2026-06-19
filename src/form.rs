@@ -10,7 +10,7 @@ use std::{
 use anyhow::{Context, Result, anyhow, bail};
 use eframe::egui;
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use serde_json::Value;
 
 use crate::{
@@ -29,6 +29,7 @@ pub struct CallConfig {
     pub timeout: Option<u64>,
     pub always_on_top: bool,
     pub theme: Option<Theme>,
+    pub control_width: ControlWidth,
     pub submit_label: String,
     pub cancel_label: String,
     pub items: Vec<FormItem>,
@@ -44,6 +45,7 @@ impl Default for CallConfig {
             timeout: None,
             always_on_top: false,
             theme: None,
+            control_width: ControlWidth::Full,
             submit_label: "OK".to_string(),
             cancel_label: "Cancel".to_string(),
             items: Vec::new(),
@@ -72,6 +74,8 @@ pub enum FormItem {
         placeholder: String,
         #[serde(default)]
         required: bool,
+        #[serde(default)]
+        control_width: Option<ControlWidth>,
     },
     Textarea {
         id: String,
@@ -82,6 +86,8 @@ pub enum FormItem {
         rows: usize,
         #[serde(default)]
         required: bool,
+        #[serde(default)]
+        control_width: Option<ControlWidth>,
     },
     Select {
         id: String,
@@ -91,6 +97,8 @@ pub enum FormItem {
         default: Option<String>,
         #[serde(default)]
         required: bool,
+        #[serde(default)]
+        control_width: Option<ControlWidth>,
     },
     Checkbox {
         id: String,
@@ -100,6 +108,112 @@ pub enum FormItem {
         #[serde(default)]
         required: bool,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ControlWidth {
+    Full,
+    Pixels(f32),
+    Percent(f32),
+}
+
+impl Default for ControlWidth {
+    fn default() -> Self {
+        Self::Full
+    }
+}
+
+impl<'de> Deserialize<'de> for ControlWidth {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct ControlWidthVisitor;
+
+        impl de::Visitor<'_> for ControlWidthVisitor {
+            type Value = ControlWidth;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str(r#""full", a positive pixel number, or "1%".."100%""#)
+            }
+
+            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                parse_control_width_str(value).map_err(E::custom)
+            }
+
+            fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                parse_control_width_pixels(value as f32).map_err(E::custom)
+            }
+
+            fn visit_i64<E>(self, value: i64) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                parse_control_width_pixels(value as f32).map_err(E::custom)
+            }
+
+            fn visit_f64<E>(self, value: f64) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                parse_control_width_pixels(value as f32).map_err(E::custom)
+            }
+        }
+
+        deserializer.deserialize_any(ControlWidthVisitor)
+    }
+}
+
+impl Serialize for ControlWidth {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Full => serializer.serialize_str("full"),
+            Self::Pixels(px) => serializer.serialize_f32(*px),
+            Self::Percent(percent) => serializer.serialize_str(&format!("{}%", percent * 100.0)),
+        }
+    }
+}
+
+fn parse_control_width_str(value: &str) -> Result<ControlWidth, String> {
+    let value = value.trim();
+    if value.eq_ignore_ascii_case("full") {
+        return Ok(ControlWidth::Full);
+    }
+    if let Some(percent) = value.strip_suffix('%') {
+        let percent = percent
+            .trim()
+            .parse::<f32>()
+            .map_err(|_| "control_width percentage must be a number".to_string())?;
+        if !(1.0..=100.0).contains(&percent) {
+            return Err("control_width percentage must be between 1% and 100%".to_string());
+        }
+        return Ok(ControlWidth::Percent(percent / 100.0));
+    }
+    Err(r#"control_width must be "full", a positive pixel number, or "1%".."100%""#.to_string())
+}
+
+fn parse_control_width_pixels(value: f32) -> Result<ControlWidth, String> {
+    if !value.is_finite() || value <= 0.0 {
+        return Err("control_width pixel value must be greater than 0".to_string());
+    }
+    Ok(ControlWidth::Pixels(value))
+}
+
+fn resolved_control_width(control_width: ControlWidth, available_width: f32) -> f32 {
+    match control_width {
+        ControlWidth::Full => available_width,
+        ControlWidth::Pixels(px) => px.min(available_width),
+        ControlWidth::Percent(percent) => available_width * percent,
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -231,6 +345,7 @@ fn apply_form_args(config: &mut CallConfig, args: &FormArgs) -> Result<()> {
             default: defaults.remove(&item.id).unwrap_or_default(),
             placeholder: String::new(),
             required: required.contains(item.id.as_str()),
+            control_width: None,
         });
     }
     for item in &args.textareas {
@@ -240,6 +355,7 @@ fn apply_form_args(config: &mut CallConfig, args: &FormArgs) -> Result<()> {
             default: defaults.remove(&item.id).unwrap_or_default(),
             rows: default_rows(),
             required: required.contains(item.id.as_str()),
+            control_width: None,
         });
     }
     for item in &args.selects {
@@ -253,6 +369,7 @@ fn apply_form_args(config: &mut CallConfig, args: &FormArgs) -> Result<()> {
             default: defaults.remove(&item.id),
             options: parsed_options,
             required: required.contains(item.id.as_str()),
+            control_width: None,
         });
     }
     for item in &args.checkboxes {
@@ -515,30 +632,58 @@ impl FormApp {
                 id,
                 label,
                 placeholder,
+                control_width,
                 ..
             } => {
                 ui.label(label);
                 if let Some(FieldValue::Text(value)) = self.values.get_mut(id) {
-                    let edit = egui::TextEdit::singleline(value).hint_text(placeholder);
+                    let width = resolved_control_width(
+                        control_width.unwrap_or(self.config.control_width),
+                        ui.available_width(),
+                    );
+                    let edit = egui::TextEdit::singleline(value)
+                        .hint_text(placeholder)
+                        .desired_width(width);
                     ui.add(edit);
                 }
                 self.render_error(ui, id);
             }
             FormItem::Textarea {
-                id, label, rows, ..
+                id,
+                label,
+                rows,
+                control_width,
+                ..
             } => {
                 ui.label(label);
                 if let Some(FieldValue::Text(value)) = self.values.get_mut(id) {
-                    ui.add(egui::TextEdit::multiline(value).desired_rows(*rows));
+                    let width = resolved_control_width(
+                        control_width.unwrap_or(self.config.control_width),
+                        ui.available_width(),
+                    );
+                    ui.add(
+                        egui::TextEdit::multiline(value)
+                            .desired_rows(*rows)
+                            .desired_width(width),
+                    );
                 }
                 self.render_error(ui, id);
             }
             FormItem::Select {
-                id, label, options, ..
+                id,
+                label,
+                options,
+                control_width,
+                ..
             } => {
                 ui.label(label);
                 if let Some(FieldValue::Text(value)) = self.values.get_mut(id) {
+                    let width = resolved_control_width(
+                        control_width.unwrap_or(self.config.control_width),
+                        ui.available_width(),
+                    );
                     egui::ComboBox::from_id_salt(id)
+                        .width(width)
                         .selected_text(value.as_str())
                         .show_ui(ui, |ui| {
                             for option in options {
@@ -683,6 +828,7 @@ mod tests {
                     default: String::new(),
                     placeholder: String::new(),
                     required: false,
+                    control_width: None,
                 },
                 FormItem::Checkbox {
                     id: "name".to_string(),
@@ -705,6 +851,7 @@ mod tests {
                 options: vec!["dev".to_string(), "prod".to_string()],
                 default: Some("staging".to_string()),
                 required: false,
+                control_width: None,
             }],
             ..Default::default()
         };
@@ -725,6 +872,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(config.title, "Deploy");
+        assert_eq!(config.control_width, ControlWidth::Full);
         assert_eq!(config.items.len(), 1);
     }
 
@@ -822,7 +970,78 @@ mod tests {
                 options: vec!["dev".to_string(), "staging".to_string(), "prod".to_string()],
                 default: Some("staging".to_string()),
                 required: false,
+                control_width: None,
             }]
+        );
+    }
+
+    #[test]
+    fn parses_top_level_control_width_percent() {
+        let config: CallConfig = crate::config::parse_config_text(
+            r#"
+            control_width = "75%"
+            "#,
+            ConfigFormat::Toml,
+        )
+        .unwrap();
+
+        assert_eq!(config.control_width, ControlWidth::Percent(0.75));
+    }
+
+    #[test]
+    fn parses_item_control_width_override() {
+        let config: CallConfig = crate::config::parse_config_text(
+            r#"
+            control_width = "75%"
+
+            [[items]]
+            type = "input"
+            id = "name"
+            label = "Name"
+            control_width = 320
+            "#,
+            ConfigFormat::Toml,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            config.items.first(),
+            Some(FormItem::Input {
+                control_width: Some(ControlWidth::Pixels(320.0)),
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_control_width_percentage() {
+        let invalid_error = crate::config::parse_config_text::<CallConfig>(
+            r#"control_width = "abc%""#,
+            ConfigFormat::Toml,
+        )
+        .unwrap_err();
+        let invalid_text = format!("{invalid_error:#}");
+        assert!(invalid_text.contains("percentage must be a number"));
+
+        let out_of_range_error = crate::config::parse_config_text::<CallConfig>(
+            r#"control_width = "150%""#,
+            ConfigFormat::Toml,
+        )
+        .unwrap_err();
+        let out_of_range = format!("{out_of_range_error:#}");
+        assert!(out_of_range.contains("between 1% and 100%"));
+    }
+
+    #[test]
+    fn resolves_control_width() {
+        assert_eq!(resolved_control_width(ControlWidth::Full, 420.0), 420.0);
+        assert_eq!(
+            resolved_control_width(ControlWidth::Pixels(640.0), 420.0),
+            420.0
+        );
+        assert_eq!(
+            resolved_control_width(ControlWidth::Percent(0.75), 420.0),
+            315.0
         );
     }
 

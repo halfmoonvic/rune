@@ -69,6 +69,7 @@ fn handle_input(args: ShortcutArgs) -> Result<i32> {
         default,
         placeholder: String::new(),
         required: false,
+        control_width: None,
     });
 
     let outcome = run_form(config, load_global_style())?;
@@ -103,6 +104,7 @@ fn shortcut_base_config(
         timeout: args.common.timeout,
         always_on_top: args.common.always_on_top,
         theme: args.common.theme,
+        control_width: Default::default(),
         submit_label: submit_label.to_string(),
         cancel_label: cancel_label.to_string(),
         show_cancel,
