@@ -5,11 +5,11 @@ mod form;
 
 use std::process::ExitCode;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
-use cli::{Cli, Command, ConfigCommand};
+use cli::{Cli, Command, ConfigCommand, ShortcutArgs};
 use config::{StyleOverrides, global_config_path, init_global_config, load_global_style};
-use form::{FormOutcome, form_exit_code, resolve_form, run_form};
+use form::{CallConfig, FormItem, FormOutcome, form_exit_code, resolve_form, run_form};
 
 fn main() -> ExitCode {
     match run() {
@@ -26,11 +26,93 @@ fn run() -> Result<i32> {
     match cli.command {
         Command::Config(args) => handle_config(args.command),
         Command::Form(args) => handle_form(args),
-        Command::Stream(_) | Command::Confirm(_) | Command::Alert(_) | Command::Input(_) => {
+        Command::Confirm(args) => handle_confirm(args),
+        Command::Alert(args) => handle_alert(args),
+        Command::Input(args) => handle_input(args),
+        Command::Stream(_) => {
             eprintln!("error: command is not implemented yet");
             Ok(exit::CONFIG_ERROR)
         }
     }
+}
+
+fn handle_confirm(args: ShortcutArgs) -> Result<i32> {
+    let config = shortcut_base_config(args, "Confirm", "Yes", "No", true);
+    let outcome = run_form(config, load_global_style())?;
+    Ok(match outcome {
+        FormOutcome::Submitted(_) => exit::SUCCESS,
+        FormOutcome::Cancelled => exit::CANCELLED,
+        FormOutcome::TimedOut => exit::TIMEOUT,
+    })
+}
+
+fn handle_alert(args: ShortcutArgs) -> Result<i32> {
+    let config = shortcut_base_config(args, "Alert", "Close", "", false);
+    let outcome = run_form(config, load_global_style())?;
+    Ok(match outcome {
+        FormOutcome::Submitted(_) | FormOutcome::Cancelled => exit::SUCCESS,
+        FormOutcome::TimedOut => exit::TIMEOUT,
+    })
+}
+
+fn handle_input(args: ShortcutArgs) -> Result<i32> {
+    let text = args.text.clone();
+    let default = args.default.clone().unwrap_or_default();
+    let mut config = shortcut_base_config(args, "Input", "OK", "Cancel", true);
+    config.items.clear();
+    config.items.push(FormItem::Input {
+        id: "value".to_string(),
+        label: text,
+        default,
+        placeholder: String::new(),
+        required: false,
+    });
+
+    let outcome = run_form(config, load_global_style())?;
+    match outcome {
+        FormOutcome::Submitted(output) => {
+            let value: serde_json::Value =
+                serde_json::from_str(&output).context("input form returned invalid JSON")?;
+            if let Some(raw) = value.get("value").and_then(|value| value.as_str()) {
+                println!("{raw}");
+            }
+            Ok(exit::SUCCESS)
+        }
+        FormOutcome::Cancelled => Ok(exit::CANCELLED),
+        FormOutcome::TimedOut => Ok(exit::TIMEOUT),
+    }
+}
+
+fn shortcut_base_config(
+    args: ShortcutArgs,
+    default_title: &str,
+    submit_label: &str,
+    cancel_label: &str,
+    show_cancel: bool,
+) -> CallConfig {
+    let mut config = CallConfig {
+        title: args
+            .common
+            .title
+            .clone()
+            .unwrap_or_else(|| default_title.to_string()),
+        width: args.common.width,
+        timeout: args.common.timeout,
+        always_on_top: args.common.always_on_top,
+        theme: args.common.theme,
+        submit_label: submit_label.to_string(),
+        cancel_label: cancel_label.to_string(),
+        show_cancel,
+        items: vec![FormItem::Text {
+            content: args.text,
+            style: form::TextStyle::Info,
+        }],
+    };
+
+    if config.width.is_none() {
+        config.width = Some(420.0);
+    }
+    config
 }
 
 fn handle_form(args: cli::FormArgs) -> Result<i32> {

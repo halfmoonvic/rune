@@ -29,6 +29,8 @@ pub struct CallConfig {
     pub submit_label: String,
     pub cancel_label: String,
     pub items: Vec<FormItem>,
+    #[serde(skip)]
+    pub show_cancel: bool,
 }
 
 impl Default for CallConfig {
@@ -42,6 +44,7 @@ impl Default for CallConfig {
             submit_label: "OK".to_string(),
             cancel_label: "Cancel".to_string(),
             items: Vec::new(),
+            show_cancel: true,
         }
     }
 }
@@ -469,7 +472,7 @@ impl eframe::App for FormApp {
 
             ui.separator();
             ui.horizontal(|ui| {
-                if ui.button(&self.config.cancel_label).clicked() {
+                if self.config.show_cancel && ui.button(&self.config.cancel_label).clicked() {
                     self.cancel(&ctx);
                 }
                 if ui.button(&self.config.submit_label).clicked() {
